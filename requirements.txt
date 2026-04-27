@@ -2,7 +2,7 @@
 streamlit>=1.38.0
 
 # Visión Artificial y Procesamiento
-opencv-python>=4.10.0.84
+opencv-python-headless>=4.10.0.84
 mediapipe==0.10.18
 deepface==0.0.99
 tensorflow==2.16.2
