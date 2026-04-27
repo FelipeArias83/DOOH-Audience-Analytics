@@ -10,7 +10,7 @@ tf-keras==2.16.0
 
 # Análisis de Datos
 pandas>=2.2.0
-numpy>=2.1.0
+numpy>=1.24.0,<2
 
 # Utilidades para Python 3.13
 setuptools
