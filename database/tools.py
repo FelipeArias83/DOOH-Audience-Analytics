@@ -25,10 +25,23 @@ def _env_flag(name, default=False):
         return default
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
+
+def _env_float(name, default):
+    raw = os.getenv(name)
+    if raw is None:
+        return float(default)
+    try:
+        return float(raw)
+    except Exception:
+        return float(default)
+
 class AudienceTracker:
     def __init__(self, enable_demographics=False, demographics_interval_sec=8.0):
         self.smile_threshold = 3.5
         self.max_num_faces = 6
+        # Parametros calibrables para distancia aprox: d ~= (f * IPD_real) / IPD_pixeles
+        self.focal_length_px = _env_float("FOCAL_LENGTH_PX", 700.0)
+        self.real_ipd_m = _env_float("REAL_IPD_M", 0.063)
         self.demographics_interval_sec = float(demographics_interval_sec)
         self.last_demographics_ts = 0.0
         self.last_demographics = {"age": None, "gender": None, "is_child": None}
@@ -57,20 +70,43 @@ class AudienceTracker:
         # Ratio simple: si la boca se estira horizontalmente, es una sonrisa
         return width / (height + 0.0001)
 
+    def _estimate_distance_meters(self, landmarks, frame_width_px):
+        # Landmarks exteriores aproximados de ojo izquierdo y derecho en FaceMesh.
+        left_eye_outer = landmarks[33]
+        right_eye_outer = landmarks[263]
+
+        left_x = left_eye_outer.x * frame_width_px
+        right_x = right_eye_outer.x * frame_width_px
+        ipd_px = abs(right_x - left_x)
+        if ipd_px < 1.0:
+            return None
+
+        distance_m = (self.focal_length_px * self.real_ipd_m) / ipd_px
+        # Limite de seguridad para descartar outliers de tracking.
+        if distance_m <= 0 or distance_m > 8:
+            return None
+        return distance_m
+
     def process_frame(self, frame):
         results = self.face_mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         
         face_detected = False
         is_smiling = False
         face_count = 0
+        distance_m = None
         
         if results.multi_face_landmarks:
             face_detected = True
             face_count = len(results.multi_face_landmarks)
+            frame_width = frame.shape[1]
 
             for face_landmarks in results.multi_face_landmarks:
                 landmarks = face_landmarks.landmark
                 smile_ratio = self.get_smile_score(landmarks)
+                current_distance_m = self._estimate_distance_meters(landmarks, frame_width)
+                if current_distance_m is not None:
+                    if distance_m is None or current_distance_m < distance_m:
+                        distance_m = current_distance_m
                 # Si al menos una persona sonríe, marcamos sonrisa en el frame.
                 if smile_ratio < self.smile_threshold:
                     is_smiling = True
@@ -80,7 +116,7 @@ class AudienceTracker:
                 self.last_demographics = self._estimate_demographics(frame)
                 self.last_demographics_ts = time.time()
 
-        return face_detected, is_smiling, self.last_demographics, face_count
+        return face_detected, is_smiling, self.last_demographics, face_count, distance_m
 
     def _should_refresh_demographics(self):
         return (time.time() - self.last_demographics_ts) >= self.demographics_interval_sec

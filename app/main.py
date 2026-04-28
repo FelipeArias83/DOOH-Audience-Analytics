@@ -54,6 +54,7 @@ class VideoProcessor(VideoTransformerBase):
         self.last_gender = None
         self.last_is_child = None
         self.last_face_count = 0
+        self.last_distance_m = None
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
@@ -62,8 +63,9 @@ class VideoProcessor(VideoTransformerBase):
         current_ad = get_current_ad(self.start_time, self.playlist)
         
         # 2. Analizar rostros
-        looking, smiling, demographics, face_count = self.tracker.process_frame(img)
+        looking, smiling, demographics, face_count, distance_m = self.tracker.process_frame(img)
         self.last_face_count = face_count
+        self.last_distance_m = distance_m
         
         if looking:
             if self.viewing_start is None:
@@ -82,15 +84,18 @@ class VideoProcessor(VideoTransformerBase):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             cv2.putText(img, f"Rostros: {self.last_face_count}", (20, 110),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+            if self.last_distance_m is not None:
+                cv2.putText(img, f"Distancia aprox: {self.last_distance_m:.2f} m", (20, 145),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             if self.last_gender:
-                cv2.putText(img, f"Genero: {self.last_gender}", (20, 145),
+                cv2.putText(img, f"Genero: {self.last_gender}", (20, 180),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             if self.last_age is not None:
-                cv2.putText(img, f"Edad aprox: {self.last_age}", (20, 180),
+                cv2.putText(img, f"Edad aprox: {self.last_age}", (20, 215),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
             if self.last_is_child is not None:
                 etiqueta_infancia = "Nino/a" if self.last_is_child else "Adulto"
-                cv2.putText(img, f"Grupo: {etiqueta_infancia}", (20, 215),
+                cv2.putText(img, f"Grupo: {etiqueta_infancia}", (20, 250),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
         else:
             if self.viewing_start:
