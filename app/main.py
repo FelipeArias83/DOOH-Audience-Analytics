@@ -63,10 +63,32 @@ class VideoProcessor(VideoTransformerBase):
         current_ad = get_current_ad(self.start_time, self.playlist)
         
         # 2. Analizar rostros
-        looking, smiling, demographics, face_count, distance_m = self.tracker.process_frame(img)
+        looking, smiling, demographics, face_count, distance_m, face_boxes = self.tracker.process_frame(img)
         self.last_face_count = face_count
         self.last_distance_m = distance_m
-        
+
+        # --- Recuadros por rostro ---
+        # Verde  = <= 2 m (rango óptimo)
+        # Naranja = 2-3 m (rango aceptable)
+        # Rojo   = > 3 m (fuera de rango confiable)
+        RANGE_OPTIMAL = 2.0
+        RANGE_MAX = 3.0
+        for face in face_boxes:
+            x1, y1, x2, y2 = face["bbox"]
+            d = face["dist_m"]
+            if d is None:
+                box_color = (200, 200, 200)   # gris: sin dato de distancia
+            elif d <= RANGE_OPTIMAL:
+                box_color = (0, 220, 0)        # verde
+            elif d <= RANGE_MAX:
+                box_color = (0, 165, 255)      # naranja
+            else:
+                box_color = (0, 0, 220)        # rojo
+            cv2.rectangle(img, (x1, y1), (x2, y2), box_color, 2)
+            label = f"{d:.2f}m" if d is not None else "?"
+            cv2.putText(img, label, (x1, max(y1 - 8, 12)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, box_color, 2)
+
         if looking:
             if self.viewing_start is None:
                 self.viewing_start = time.time()

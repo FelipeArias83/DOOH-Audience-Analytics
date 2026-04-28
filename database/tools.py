@@ -87,6 +87,20 @@ class AudienceTracker:
             return None
         return distance_m
 
+    def _face_bbox_px(self, landmarks, frame_w, frame_h, padding=0.12):
+        """Devuelve (x1, y1, x2, y2) en pixeles con un margen proporcional."""
+        xs = [lm.x for lm in landmarks]
+        ys = [lm.y for lm in landmarks]
+        x_min, x_max = min(xs), max(xs)
+        y_min, y_max = min(ys), max(ys)
+        pad_x = (x_max - x_min) * padding
+        pad_y = (y_max - y_min) * padding
+        x1 = int(max(0.0, x_min - pad_x) * frame_w)
+        y1 = int(max(0.0, y_min - pad_y) * frame_h)
+        x2 = int(min(1.0, x_max + pad_x) * frame_w)
+        y2 = int(min(1.0, y_max + pad_y) * frame_h)
+        return x1, y1, x2, y2
+
     def process_frame(self, frame):
         results = self.face_mesh.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         
@@ -94,29 +108,35 @@ class AudienceTracker:
         is_smiling = False
         face_count = 0
         distance_m = None
+        face_boxes = []   # lista de {bbox, dist_m} por rostro
         
         if results.multi_face_landmarks:
             face_detected = True
             face_count = len(results.multi_face_landmarks)
-            frame_width = frame.shape[1]
+            frame_h, frame_w = frame.shape[:2]
 
             for face_landmarks in results.multi_face_landmarks:
                 landmarks = face_landmarks.landmark
                 smile_ratio = self.get_smile_score(landmarks)
-                current_distance_m = self._estimate_distance_meters(landmarks, frame_width)
+                current_distance_m = self._estimate_distance_metros(landmarks, frame_w)
                 if current_distance_m is not None:
                     if distance_m is None or current_distance_m < distance_m:
                         distance_m = current_distance_m
+                bbox = self._face_bbox_px(landmarks, frame_w, frame_h)
+                face_boxes.append({"bbox": bbox, "dist_m": current_distance_m})
                 # Si al menos una persona sonríe, marcamos sonrisa en el frame.
                 if smile_ratio < self.smile_threshold:
                     is_smiling = True
-                    break
 
             if self.demographics_enabled and self._should_refresh_demographics():
                 self.last_demographics = self._estimate_demographics(frame)
                 self.last_demographics_ts = time.time()
 
-        return face_detected, is_smiling, self.last_demographics, face_count, distance_m
+        return face_detected, is_smiling, self.last_demographics, face_count, distance_m, face_boxes
+
+    def _estimate_distance_metros(self, landmarks, frame_width_px):
+        """Alias interno para mantener compatibilidad al refactorizar."""
+        return self._estimate_distance_meters(landmarks, frame_width_px)
 
     def _should_refresh_demographics(self):
         return (time.time() - self.last_demographics_ts) >= self.demographics_interval_sec
