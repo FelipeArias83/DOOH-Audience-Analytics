@@ -41,8 +41,11 @@ def get_current_ad(start_time, playlist_df):
 
 # --- PROCESADOR DE VIDEO ---
 class VideoProcessor(VideoTransformerBase):
-    def __init__(self, playlist, start_time):
-        self.tracker = AudienceTracker()
+    def __init__(self, playlist, start_time, enable_demographics=False, demographics_interval_sec=8.0):
+        self.tracker = AudienceTracker(
+            enable_demographics=enable_demographics,
+            demographics_interval_sec=demographics_interval_sec,
+        )
         self.playlist = playlist
         self.start_time = start_time
         self.viewing_start = None
@@ -135,7 +138,26 @@ with tab1:
         key="playlist_editor"
     )
 
-    # 2. Control de Inicio
+    # 2. Modo de analítica demográfica (opcional para evitar descargas pesadas en nube)
+    st.sidebar.subheader("⚙️ Rendimiento")
+    enable_demographics = st.sidebar.toggle(
+        "Análisis demográfico (edad/género)",
+        value=False,
+        help="Activa DeepFace. La primera vez puede descargar modelos grandes y agregar latencia.",
+    )
+    demographics_interval_sec = st.sidebar.slider(
+        "Intervalo demográfico (seg)",
+        min_value=5.0,
+        max_value=20.0,
+        value=8.0,
+        step=1.0,
+        help="Un valor mayor reduce CPU y evita lag durante la transmisión.",
+        disabled=not enable_demographics,
+    )
+    if enable_demographics:
+        st.sidebar.warning("Modo demográfico activo: mayor consumo de CPU y posible demora inicial.")
+
+    # 3. Control de Inicio
     if 'start_time' not in st.session_state:
         st.session_state.start_time = None
 
@@ -150,6 +172,8 @@ with tab1:
             # Capturar start_time como variable local para evitar acceso a session_state en contexto async
             captured_start_time = st.session_state.start_time
             captured_playlist = edited_playlist.copy() if hasattr(edited_playlist, 'copy') else edited_playlist
+            captured_enable_demographics = enable_demographics
+            captured_demographics_interval = demographics_interval_sec
             
             # Iniciamos el WebRTC pasando la playlist y el tiempo de inicio al procesador
             webrtc_streamer(
@@ -158,7 +182,9 @@ with tab1:
                 rtc_configuration=RTC_CONFIGURATION,
                 video_processor_factory=lambda: VideoProcessor(
                     playlist=captured_playlist, 
-                    start_time=captured_start_time
+                    start_time=captured_start_time,
+                    enable_demographics=captured_enable_demographics,
+                    demographics_interval_sec=captured_demographics_interval,
                 ),
                 media_stream_constraints={
                     "video": {"facingMode": "user"}, # Fuerza cámara frontal en móviles

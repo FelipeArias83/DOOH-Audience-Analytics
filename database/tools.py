@@ -6,8 +6,9 @@ import time
 import tempfile
 
 # Reduce ruido de logs de TensorFlow / MediaPipe en consola.
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["GLOG_minloglevel"] = "3"
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
+os.environ.setdefault("GLOG_minloglevel", "3")
+os.environ.setdefault("ABSL_LOG_LEVEL", "3")
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
 
 import mediapipe as mp
@@ -17,14 +18,22 @@ try:
 except Exception:
     DeepFace = None
 
+
+def _env_flag(name, default=False):
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
 class AudienceTracker:
-    def __init__(self):
+    def __init__(self, enable_demographics=False, demographics_interval_sec=8.0):
         self.smile_threshold = 3.5
         self.max_num_faces = 6
-        self.demographics_interval_sec = 5.0  # Aumentado para evitar lag
+        self.demographics_interval_sec = float(demographics_interval_sec)
         self.last_demographics_ts = 0.0
         self.last_demographics = {"age": None, "gender": None, "is_child": None}
-        self.demographics_enabled = DeepFace is not None
+        env_enabled = _env_flag("ENABLE_DEMOGRAPHICS", default=False)
+        self.demographics_enabled = (enable_demographics or env_enabled) and DeepFace is not None
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=self.max_num_faces,
@@ -67,7 +76,7 @@ class AudienceTracker:
                     is_smiling = True
                     break
 
-            if self._should_refresh_demographics():
+            if self.demographics_enabled and self._should_refresh_demographics():
                 self.last_demographics = self._estimate_demographics(frame)
                 self.last_demographics_ts = time.time()
 
@@ -81,10 +90,16 @@ class AudienceTracker:
             return self.last_demographics
 
         try:
+            # DeepFace funciona bien con resolución menor y reduce consumo de CPU.
+            h, w = frame.shape[:2]
+            if w > 640:
+                scale = 640.0 / float(w)
+                frame = cv2.resize(frame, (640, int(h * scale)), interpolation=cv2.INTER_AREA)
+
             # Guardar el frame en un archivo temporal para DeepFace
             with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp_file:
                 temp_path = tmp_file.name
-                cv2.imwrite(temp_path, frame)
+                cv2.imwrite(temp_path, frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
             
             try:
                 analysis = DeepFace.analyze(
@@ -119,6 +134,6 @@ class AudienceTracker:
                         os.unlink(temp_path)
                     except:
                         pass
-        except Exception as e:
+        except Exception:
             # Silenciar excepciones para no crashear la app
             return self.last_demographics
