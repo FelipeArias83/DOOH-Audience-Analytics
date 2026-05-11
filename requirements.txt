@@ -16,4 +16,5 @@ numpy>=1.24.0,<2
 setuptools
 wheel
 
-streamlit-webrtc
+# Evita versiones antiguas incompatibles con Python 3.12/Tornado en Streamlit Cloud
+streamlit-webrtc>=0.64.0
