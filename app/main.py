@@ -1,12 +1,22 @@
 import streamlit as st
 import warnings
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration, WebRtcMode
 import av 
 import cv2
 import sys
 import time
 import pandas as pd
 from pathlib import Path
+
+# Compatibilidad con entornos donde Tornado no expone BaseAsyncIOLoop.
+try:
+    from tornado.platform.asyncio import BaseAsyncIOLoop  # type: ignore
+except ImportError:
+    from tornado.platform.asyncio import AsyncIOLoop
+    import tornado.platform.asyncio as tornado_asyncio
+
+    tornado_asyncio.BaseAsyncIOLoop = AsyncIOLoop  # type: ignore[attr-defined]
+
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration, WebRtcMode
 
 # --- CONFIGURACIÓN DE RUTAS ---
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
