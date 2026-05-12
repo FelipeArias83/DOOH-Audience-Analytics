@@ -7,16 +7,24 @@ import time
 import pandas as pd
 from pathlib import Path
 
-# Compatibilidad con entornos donde Tornado no expone BaseAsyncIOLoop.
+# Import opcional para evitar que toda la app falle si WebRTC no es compatible en Cloud.
+WEBRTC_AVAILABLE = True
+WEBRTC_IMPORT_ERROR = None
 try:
-    from tornado.platform.asyncio import BaseAsyncIOLoop  # type: ignore
-except ImportError:
-    from tornado.platform.asyncio import AsyncIOLoop
-    import tornado.platform.asyncio as tornado_asyncio
+    from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration, WebRtcMode
+except Exception as exc:
+    WEBRTC_AVAILABLE = False
+    WEBRTC_IMPORT_ERROR = exc
+    VideoTransformerBase = object  # type: ignore[assignment]
 
-    tornado_asyncio.BaseAsyncIOLoop = AsyncIOLoop  # type: ignore[attr-defined]
+    class RTCConfiguration(dict):
+        pass
 
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, RTCConfiguration, WebRtcMode
+    class WebRtcMode:
+        SENDRECV = "SENDRECV"
+
+    def webrtc_streamer(*args, **kwargs):
+        return None
 
 # --- CONFIGURACIÓN DE RUTAS ---
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -154,6 +162,14 @@ tab1, tab2, tab3 = st.tabs(["📹 En Vivo", "📊 Reportes", "💾 Base de Datos
 
 with tab1:
     st.header("Transmisión en Vivo y Control")
+
+    if not WEBRTC_AVAILABLE:
+        st.error("No se pudo iniciar streamlit-webrtc en este entorno.")
+        st.code(str(WEBRTC_IMPORT_ERROR))
+        st.info(
+            "La app seguirá disponible para reportes y base de datos. "
+            "Para habilitar la cámara, revisa versiones de tornado/streamlit-webrtc en el deploy."
+        )
     
     # Configuración WebRTC
     RTC_CONFIGURATION = RTCConfiguration(
